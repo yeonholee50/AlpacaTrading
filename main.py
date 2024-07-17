@@ -32,7 +32,9 @@ nasdaq_100_symbols = [
 logging.basicConfig(filename='trading_bot.log', level=logging.INFO)
 
 def log_trade(symbol, side, qty, price):
-    logging.info(f"{datetime.now()} - {side} {qty} shares of {symbol} at ${price}")
+    message = f"{datetime.now()} - {side} {qty} shares of {symbol} at ${price}"
+    logging.info(message)
+    print(message)
 
 def submit_order(symbol, qty, side):
     try:
@@ -40,6 +42,7 @@ def submit_order(symbol, qty, side):
         log_trade(symbol, side, qty, order.filled_avg_price)
     except Exception as e:
         logging.error(f"Error submitting order for {symbol}: {e}")
+        print(f"Error submitting order for {symbol}: {e}")
 
 def mean_reversion(symbol, short_window=40, long_window=100):
     data = api.get_barset(symbol, 'minute', limit=long_window).df[symbol]
@@ -67,31 +70,41 @@ def arbitrage(symbol1, symbol2):
     return data1, data2
 
 def run_trading_bot():
-    start_time = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
-    end_time = datetime.now().replace(hour=16, minute=0, second=0, microsecond=0)
+    while True:
+        now = datetime.now()
+        if now.weekday() < 5:  # Check if it's a weekday
+            start_time = now.replace(hour=9, minute=30, second=0, microsecond=0)
+            end_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
 
-    while datetime.now() < start_time:
-        time.sleep(1)
-
-    while datetime.now() < end_time:
-        for symbol in nasdaq_100_symbols:
-            # Mean Reversion
-            mean_reversion_data = mean_reversion(symbol)
-            if mean_reversion_data['position'].iloc[-1] == 1:
-                submit_order(symbol, 1, 'buy')
-            elif mean_reversion_data['position'].iloc[-1] == -1:
-                submit_order(symbol, 1, 'sell')
-            
-            # Momentum Trading
-            momentum_data = momentum_trading(symbol)
-            if momentum_data['position'].iloc[-1] == 1:
-                submit_order(symbol, 1, 'buy')
-            elif momentum_data['position'].iloc[-1] == -1:
-                submit_order(symbol, 1, 'sell')
-        
-        time.sleep(60)  # Run every minute
-
-    logging.info("Trading session ended.")
+            if start_time <= now <= end_time:
+                print("Trading session is active.")
+                for symbol in nasdaq_100_symbols:
+                    # Mean Reversion
+                    mean_reversion_data = mean_reversion(symbol)
+                    if mean_reversion_data['position'].iloc[-1] == 1:
+                        submit_order(symbol, 1, 'buy')
+                    elif mean_reversion_data['position'].iloc[-1] == -1:
+                        submit_order(symbol, 1, 'sell')
+                    
+                    # Momentum Trading
+                    momentum_data = momentum_trading(symbol)
+                    if momentum_data['position'].iloc[-1] == 1:
+                        submit_order(symbol, 1, 'buy')
+                    elif momentum_data['position'].iloc[-1] == -1:
+                        submit_order(symbol, 1, 'sell')
+                
+                print(f"Completed trading check for {len(nasdaq_100_symbols)} symbols.")
+                time.sleep(60)  # Run every minute
+            else:
+                message = "Outside trading hours. Sleeping until the next trading session."
+                logging.info(message)
+                print(message)
+                time.sleep(60 * 60)  # Sleep for 1 hour outside trading hours
+        else:
+            message = "It's a weekend. Sleeping until the next trading session."
+            logging.info(message)
+            print(message)
+            time.sleep(60 * 60)  # Sleep for 1 hour during weekends
 
 if __name__ == "__main__":
     run_trading_bot()
