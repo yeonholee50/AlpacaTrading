@@ -1,18 +1,10 @@
-import alpaca_trade_api as tradeapi
-import pandas as pd
-import numpy as np
+# main.py
 from datetime import datetime, timedelta
 import time
-import logging
-
-# API keys
-API_KEY = 'PKCTIXCLD4JLZ64F5B9S'
-API_SECRET = 'BaNlmKqrpSpXxqEd7qbzPsbs4tAkyMu5bBXfVgP8'
-BASE_URL = 'https://paper-api.alpaca.markets'
-
-# Initialize the Alpaca API
-api = tradeapi.REST(API_KEY, API_SECRET, BASE_URL, api_version='v2')
-account = api.get_account()
+from config import API_KEY, API_SECRET, BASE_URL
+from trading_strategies import mean_reversion, momentum_trading
+from order_manager import submit_order
+from utils import get_profit_loss
 
 # List of NASDAQ 100 symbols
 nasdaq_100_symbols = [
@@ -28,64 +20,8 @@ nasdaq_100_symbols = [
     'DLTR', 'AEP', 'FOX', 'FOXA', 'SIRI', 'DISCA', 'DISCK'
 ]
 
-# Logging setup
-logging.basicConfig(filename='trading_bot.log', level=logging.INFO)
-
-def log_trade(symbol, side, qty, price):
-    message = f"{datetime.now()} - {side} {qty} shares of {symbol} at ${price}"
-    logging.info(message)
-    print(message)
-
-def submit_order(symbol, qty, side):
-    try:
-        price = api.get_last_trade(symbol).price
-        order_cost = qty * price
-        available_cash = float(api.get_account().cash)
-
-        if order_cost <= available_cash:
-            order = api.submit_order(symbol=symbol, qty=qty, side=side, type='market', time_in_force='day')
-            log_trade(symbol, side, qty, price)
-        else:
-            message = f"Insufficient funds to {side} {qty} shares of {symbol} at ${price}. Available cash: ${available_cash}"
-            logging.info(message)
-            print(message)
-    except Exception as e:
-        logging.error(f"Error submitting order for {symbol}: {e}")
-        print(f"Error submitting order for {symbol}: {e}")
-
-def mean_reversion(symbol, short_window=40, long_window=100):
-    data = api.get_barset(symbol, 'minute', limit=long_window).df[symbol]
-    data['short_mavg'] = data['close'].rolling(window=short_window, min_periods=1).mean()
-    data['long_mavg'] = data['close'].rolling(window=long_window, min_periods=1).mean()
-    data['signal'] = 0
-    data['signal'][short_window:] = np.where(data['short_mavg'][short_window:] > data['long_mavg'][short_window:], 1, 0)
-    data['position'] = data['signal'].diff()
-    return data
-
-def momentum_trading(symbol, window=14):
-    data = api.get_barset(symbol, 'minute', limit=window).df[symbol]
-    data['momentum'] = data['close'] / data['close'].shift(window) - 1
-    data['signal'] = np.where(data['momentum'] > 0, 1, 0)
-    data['position'] = data['signal'].diff()
-    return data
-
-def arbitrage(symbol1, symbol2):
-    data1 = api.get_barset(symbol1, 'minute', limit=100).df[symbol1]
-    data2 = api.get_barset(symbol2, 'minute', limit=100).df[symbol2]
-    spread = data1['close'] - data2['close']
-    zscore = (spread - spread.mean()) / spread.std()
-    data1['position'] = np.where(zscore > 1, -1, np.where(zscore < -1, 1, 0))
-    data2['position'] = -data1['position']
-    return data1, data2
-
-def get_profit_loss():
-    positions = api.list_positions()
-    total_pl = 0.0
-    for position in positions:
-        total_pl += float(position.unrealized_pl)
-    return total_pl
-
 def run_trading_bot():
+    api = tradeapi.REST(API_KEY, API_SECRET, BASE_URL, api_version='v2')
     initial_cash = float(api.get_account().cash)
     while True:
         now = datetime.now()
@@ -99,16 +35,16 @@ def run_trading_bot():
                     # Mean Reversion
                     mean_reversion_data = mean_reversion(symbol)
                     if mean_reversion_data['position'].iloc[-1] == 1:
-                        submit_order(symbol, 1, 'buy')
+                        submit_order(symbol, 100, 'buy')  # Invest $100 for each buy
                     elif mean_reversion_data['position'].iloc[-1] == -1:
-                        submit_order(symbol, 1, 'sell')
+                        submit_order(symbol, 100, 'sell')  # Sell equivalent amount
                     
                     # Momentum Trading
                     momentum_data = momentum_trading(symbol)
                     if momentum_data['position'].iloc[-1] == 1:
-                        submit_order(symbol, 1, 'buy')
+                        submit_order(symbol, 100, 'buy')  # Invest $100 for each buy
                     elif momentum_data['position'].iloc[-1] == -1:
-                        submit_order(symbol, 1, 'sell')
+                        submit_order(symbol, 100, 'sell')  # Sell equivalent amount
                 
                 current_cash = float(api.get_account().cash)
                 profit_loss = get_profit_loss()
@@ -118,23 +54,9 @@ def run_trading_bot():
                 time.sleep(60)  # Run every minute
             else:
                 message = "Outside trading hours. Sleeping until the next trading session."
-                logging.info(message)
                 print(message)
                 current_cash = float(api.get_account().cash)
                 profit_loss = get_profit_loss()
                 print(f"Current Balance: ${current_cash:.2f}")
                 print(f"Profit/Loss for the Day: ${profit_loss:.2f}")
-                time.sleep(60 * 60)  # Sleep for 1 hour outside trading hours
-        else:
-            message = "It's a weekend. Sleeping until the next trading session."
-            logging.info(message)
-            print(message)
-            current_cash = float(api.get_account().cash)
-            profit_loss = get_profit_loss()
-            print(f"Current Balance: ${current_cash:.2f}")
-            print(f"Profit/Loss for the Day: ${profit_loss:.2f}")
-            time.sleep(60 * 60)  # Sleep for 1 hour during weekends
-
-if __name__ == "__main__":
-    run_trading_bot()
-im
+               
