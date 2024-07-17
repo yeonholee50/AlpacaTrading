@@ -1,1 +1,2 @@
 INFO:root:Trading session ended.
+INFO:root:Outside trading hours. Sleeping until the next trading session.

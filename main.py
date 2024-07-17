@@ -38,8 +38,17 @@ def log_trade(symbol, side, qty, price):
 
 def submit_order(symbol, qty, side):
     try:
-        order = api.submit_order(symbol=symbol, qty=qty, side=side, type='market', time_in_force='day')
-        log_trade(symbol, side, qty, order.filled_avg_price)
+        price = api.get_last_trade(symbol).price
+        order_cost = qty * price
+        available_cash = float(api.get_account().cash)
+
+        if order_cost <= available_cash:
+            order = api.submit_order(symbol=symbol, qty=qty, side=side, type='market', time_in_force='day')
+            log_trade(symbol, side, qty, price)
+        else:
+            message = f"Insufficient funds to {side} {qty} shares of {symbol} at ${price}. Available cash: ${available_cash}"
+            logging.info(message)
+            print(message)
     except Exception as e:
         logging.error(f"Error submitting order for {symbol}: {e}")
         print(f"Error submitting order for {symbol}: {e}")
@@ -69,7 +78,15 @@ def arbitrage(symbol1, symbol2):
     data2['position'] = -data1['position']
     return data1, data2
 
+def get_profit_loss():
+    positions = api.list_positions()
+    total_pl = 0.0
+    for position in positions:
+        total_pl += float(position.unrealized_pl)
+    return total_pl
+
 def run_trading_bot():
+    initial_cash = float(api.get_account().cash)
     while True:
         now = datetime.now()
         if now.weekday() < 5:  # Check if it's a weekday
@@ -93,18 +110,31 @@ def run_trading_bot():
                     elif momentum_data['position'].iloc[-1] == -1:
                         submit_order(symbol, 1, 'sell')
                 
+                current_cash = float(api.get_account().cash)
+                profit_loss = get_profit_loss()
                 print(f"Completed trading check for {len(nasdaq_100_symbols)} symbols.")
+                print(f"Current Balance: ${current_cash:.2f}")
+                print(f"Profit/Loss for the Day: ${profit_loss:.2f}")
                 time.sleep(60)  # Run every minute
             else:
                 message = "Outside trading hours. Sleeping until the next trading session."
                 logging.info(message)
                 print(message)
+                current_cash = float(api.get_account().cash)
+                profit_loss = get_profit_loss()
+                print(f"Current Balance: ${current_cash:.2f}")
+                print(f"Profit/Loss for the Day: ${profit_loss:.2f}")
                 time.sleep(60 * 60)  # Sleep for 1 hour outside trading hours
         else:
             message = "It's a weekend. Sleeping until the next trading session."
             logging.info(message)
             print(message)
+            current_cash = float(api.get_account().cash)
+            profit_loss = get_profit_loss()
+            print(f"Current Balance: ${current_cash:.2f}")
+            print(f"Profit/Loss for the Day: ${profit_loss:.2f}")
             time.sleep(60 * 60)  # Sleep for 1 hour during weekends
 
 if __name__ == "__main__":
     run_trading_bot()
+im
